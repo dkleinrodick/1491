@@ -67,6 +67,40 @@ class Flight(Base):
         }
 
 
+class Route(Base):
+    """Route model representing a Frontier route."""
+
+    __tablename__ = "routes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    origin_code = Column(String, nullable=False, index=True)
+    origin_name = Column(String, nullable=False)
+    destination_code = Column(String, nullable=False, index=True)
+    destination_name = Column(String, nullable=False)
+    route_code = Column(String, nullable=False, unique=True, index=True)  # e.g., "DEN-LAX"
+    route_display = Column(String, nullable=False)  # e.g., "Denver, CO → Los Angeles, CA"
+
+    # Scraping metadata
+    last_scraped = Column(DateTime, nullable=True)
+    scrape_count = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+
+    def to_dict(self):
+        """Convert model to dictionary."""
+        return {
+            "id": self.id,
+            "origin_code": self.origin_code,
+            "origin_name": self.origin_name,
+            "destination_code": self.destination_code,
+            "destination_name": self.destination_name,
+            "route_code": self.route_code,
+            "route_display": self.route_display,
+            "last_scraped": self.last_scraped.isoformat() if self.last_scraped else None,
+            "scrape_count": self.scrape_count,
+            "is_active": self.is_active,
+        }
+
+
 def init_db():
     """Initialize the database."""
     Base.metadata.create_all(bind=engine)

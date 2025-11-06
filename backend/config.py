@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # Optional Redis
     redis_url: str | None = None
 
+    # Scrape.do API
+    scrape_do_email: str = ""
+    scrape_do_token: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = False

@@ -8,7 +8,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 import logging
 
-from database import get_db, init_db, Flight
+from database import get_db, init_db, Flight, Route
 from scraper import FrontierScraper
 from config import settings
 
@@ -284,6 +284,157 @@ async def get_stats(db: Session = Depends(get_db)):
         "destinations": destinations,
         "last_updated": last_updated
     }
+
+
+@app.get("/api/routes", response_model=List[dict])
+async def get_routes(
+    origin: Optional[str] = Query(None, description="Filter by origin airport code"),
+    destination: Optional[str] = Query(None, description="Filter by destination airport code"),
+    search: Optional[str] = Query(None, description="Search in route display names"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all available Frontier routes.
+    """
+    query = db.query(Route).filter(Route.is_active == True)
+
+    # Apply filters
+    if origin:
+        query = query.filter(Route.origin_code == origin.upper())
+    if destination:
+        query = query.filter(Route.destination_code == destination.upper())
+    if search:
+        query = query.filter(Route.route_display.contains(search))
+
+    # Order by route code
+    query = query.order_by(Route.route_code)
+
+    # Limit results
+    routes = query.limit(limit).all()
+
+    return [route.to_dict() for route in routes]
+
+
+@app.get("/api/routes/origins", response_model=List[dict])
+async def get_route_origins(db: Session = Depends(get_db)):
+    """Get all unique origin airports with route counts."""
+    from sqlalchemy import func
+
+    results = db.query(
+        Route.origin_code,
+        Route.origin_name,
+        func.count(Route.id).label('route_count')
+    ).filter(
+        Route.is_active == True
+    ).group_by(
+        Route.origin_code,
+        Route.origin_name
+    ).order_by(
+        Route.origin_code
+    ).all()
+
+    return [{
+        "code": r.origin_code,
+        "name": r.origin_name,
+        "route_count": r.route_count
+    } for r in results]
+
+
+@app.post("/api/scrape/single-route")
+async def scrape_single_route(
+    origin: str = Query(..., description="Origin airport code"),
+    destination: str = Query(..., description="Destination airport code"),
+    date: str = Query(..., description="Departure date (YYYY-MM-DD)"),
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Scrape a single route using Scrape.do.
+
+    This conserves API credits by only scraping one route at a time.
+    """
+    try:
+        # Validate date format
+        datetime.strptime(date, '%Y-%m-%d')
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    # Find the route
+    route = db.query(Route).filter(
+        Route.origin_code == origin.upper(),
+        Route.destination_code == destination.upper()
+    ).first()
+
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    # Check if recently scraped (within last hour)
+    if route.last_scraped:
+        from datetime import timedelta
+        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+        if route.last_scraped >= one_hour_ago:
+            return {
+                "status": "cached",
+                "message": "Route was scraped less than 1 hour ago",
+                "route": route.to_dict(),
+                "last_scraped": route.last_scraped.isoformat()
+            }
+
+    # Add background task
+    if background_tasks:
+        background_tasks.add_task(
+            scrape_route_with_scrape_do,
+            origin.upper(),
+            destination.upper(),
+            date,
+            route.id,
+            db
+        )
+
+    return {
+        "status": "triggered",
+        "message": "Flight search initiated using Scrape.do",
+        "route": route.to_dict(),
+        "note": "Check /api/flights endpoint in 30-60 seconds for results"
+    }
+
+
+async def scrape_route_with_scrape_do(
+    origin: str,
+    destination: str,
+    date: str,
+    route_id: int,
+    db: Session
+):
+    """Background task to scrape a route with Scrape.do."""
+    from scrape_do_scraper import ScapeDoScraper
+    from datetime import datetime
+
+    logger.info(f"Background scraping: {origin} -> {destination} on {date}")
+
+    try:
+        scraper = ScapeDoScraper()
+        flights = await scraper.search_flights(origin, destination, date)
+
+        # Save flights to database
+        for flight_data in flights:
+            flight = Flight(**flight_data)
+            db.add(flight)
+
+        # Update route scraping metadata
+        route = db.query(Route).filter(Route.id == route_id).first()
+        if route:
+            route.last_scraped = datetime.utcnow()
+            route.scrape_count += 1
+
+        db.commit()
+
+        logger.info(f"✅ Scraped {len(flights)} flights for {origin}-{destination}")
+
+    except Exception as e:
+        logger.error(f"❌ Error scraping route: {e}")
+        db.rollback()
 
 
 if __name__ == "__main__":
