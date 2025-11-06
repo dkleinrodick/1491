@@ -408,13 +408,13 @@ async def scrape_route_with_scrape_do(
     db: Session
 ):
     """Background task to scrape a route with Scrape.do."""
-    from scrape_do_scraper import ScapeDoScraper
+    from scraper_correct import ScrapeDoCorrected
     from datetime import datetime
 
     logger.info(f"Background scraping: {origin} -> {destination} on {date}")
 
     try:
-        scraper = ScapeDoScraper()
+        scraper = ScrapeDoCorrected()
         flights = await scraper.search_flights(origin, destination, date)
 
         # Save flights to database
