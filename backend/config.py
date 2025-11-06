@@ -35,9 +35,12 @@ class Settings(BaseSettings):
     # Optional Redis
     redis_url: str | None = None
 
-    # Scrape.do API
+    # Scrape.do API (deprecated)
     scrape_do_email: str = ""
     scrape_do_token: str = ""
+
+    # Scrapfly API (current)
+    scrapfly_api_key: str = ""
 
     class Config:
         env_file = ".env"

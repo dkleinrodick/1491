@@ -5,6 +5,7 @@ pydantic==2.10.3
 pydantic-settings==2.6.1
 
 # Web Scraping & Anti-Detection
+scrapfly-sdk==0.8.23
 playwright==1.49.1
 beautifulsoup4==4.12.3
 lxml==5.3.0

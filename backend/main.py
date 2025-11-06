@@ -350,7 +350,7 @@ async def scrape_single_route(
     db: Session = Depends(get_db)
 ):
     """
-    Scrape a single route using Scrape.do.
+    Scrape a single route using Scrapfly.
 
     This conserves API credits by only scraping one route at a time.
     """
@@ -394,7 +394,7 @@ async def scrape_single_route(
 
     return {
         "status": "triggered",
-        "message": "Flight search initiated using Scrape.do",
+        "message": "Flight search initiated using Scrapfly",
         "route": route.to_dict(),
         "note": "Check /api/flights endpoint in 30-60 seconds for results"
     }
@@ -407,14 +407,14 @@ async def scrape_route_with_scrape_do(
     route_id: int,
     db: Session
 ):
-    """Background task to scrape a route with Scrape.do."""
-    from scraper_correct import ScrapeDoCorrected
+    """Background task to scrape a route using Scrapfly."""
+    from scrapfly_scraper import ScrapflyFrontierScraper
     from datetime import datetime
 
     logger.info(f"Background scraping: {origin} -> {destination} on {date}")
 
     try:
-        scraper = ScrapeDoCorrected()
+        scraper = ScrapflyFrontierScraper()
         flights = await scraper.search_flights(origin, destination, date)
 
         # Save flights to database
